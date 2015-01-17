@@ -1,0 +1,18 @@
+{
+	"ImportPath": "github.com/mikedanese/kubernetes",
+	"GoVersion": "go1.3",
+	"Packages": [
+		"./..."
+	],
+	"Deps": [
+		{
+			"ImportPath": "github.com/GoogleCloudPlatform/kubernetes/pkg/client",
+			"Rev": "a137096158b3aa55f4e8e1140140d14e7cb68e7e"
+		},
+		{
+			"ImportPath": "github.com/coreos/go-etcd/etcd",
+			"Comment": "v0.2.0-rc1-120-g23142f6",
+			"Rev": "23142f6773a676cc2cae8dd0cb90b2ea761c853f"
+		}
+	]
+}

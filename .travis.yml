@@ -1,0 +1,13 @@
+language: go
+
+go:
+  - 1.4
+  - 1.3
+install:
+  - echo "skip"
+
+script:
+  - ./build.sh
+
+notifications:
+  email: false
