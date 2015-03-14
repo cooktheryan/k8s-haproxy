@@ -9,4 +9,4 @@ ADD ./haproxy.cfg /etc/haproxy/haproxy.cfg
 ADD ./haproxy.cfg.gotemplate /etc/k8s-haproxy/haproxy.cfg.gotemplate
 ADD ./reload-haproxy.sh /reload-haproxy.sh
 
-CMD ["/k8s-haproxy", "--master=http://pilot00.qa.porch.com:8080"]
+CMD ["/bin/bash", "-c", "set -e && /k8s-haproxy --master=http://pilot00.qa.porch.com:8080"]
