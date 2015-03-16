@@ -1,0 +1,4 @@
+#! /bin/bash
+set -e
+/k8s-haproxy --master=http://pilot00.qa.porch.com:7080
+

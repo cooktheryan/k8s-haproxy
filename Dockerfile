@@ -1,12 +1,11 @@
-FROM haproxy:1.5.10
-
-RUN mkdir /var/lib/haproxy
-RUN mkdir /etc/haproxy
-RUN mv /usr/local/etc/haproxy/errors/ /etc/haproxy/
+FROM phusion/baseimage:0.9.16
+RUN apt-get update
+RUN apt-get install haproxy
 
 ADD ./bin/k8s-haproxy /k8s-haproxy
 ADD ./haproxy.cfg /etc/haproxy/haproxy.cfg
 ADD ./haproxy.cfg.gotemplate /etc/k8s-haproxy/haproxy.cfg.gotemplate
 ADD ./reload-haproxy.sh /reload-haproxy.sh
+ADD run /etc/service/haproxy/run
 
-CMD ["/bin/bash", "-c", "set -e && /k8s-haproxy --master=http://pilot00.qa.porch.com:8080"]
+CMD /sbin/my_init

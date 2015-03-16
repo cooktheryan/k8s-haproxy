@@ -2,14 +2,13 @@ package pkg
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
 )
 
 type Service struct {
 	Name     string
-	Port     string
+	Port     int
 	Backends []string
 }
 
@@ -19,7 +18,7 @@ func Convert(e []api.Endpoints) []Service {
 		if len(e.Endpoints) > 0 {
 			bs := make([]string, 0)
 			for _, b := range e.Endpoints {
-				bs = append(bs, strings.Split(b, ":")[0])
+				bs = append(bs, b.IP)
 			}
 			var name string
 			if len(e.ObjectMeta.Namespace) > 0 {
@@ -29,7 +28,7 @@ func Convert(e []api.Endpoints) []Service {
 			}
 			services = append(services, Service{
 				Name:     name,
-				Port:     strings.Split(e.Endpoints[0], ":")[1],
+				Port:     e.Endpoints[0].Port,
 				Backends: bs,
 			})
 		}

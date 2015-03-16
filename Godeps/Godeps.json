@@ -7,7 +7,7 @@
 	"Deps": [
 		{
 			"ImportPath": "github.com/GoogleCloudPlatform/kubernetes/pkg/client",
-			"Rev": "a137096158b3aa55f4e8e1140140d14e7cb68e7e"
+			"Rev": "282fececdd6534c2e5bb6ce4cb9a77d831ca0adb"
 		},
 		{
 			"ImportPath": "github.com/coreos/go-etcd/etcd",
