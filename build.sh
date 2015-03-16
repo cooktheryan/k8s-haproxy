@@ -2,7 +2,6 @@
 
 set -e -x
 
-#export GOPATH=$PWD/Godeps/_workspace:$GOPATH
 pkgs="./pkg ./cmd"
 docker_tag="quay.io/porch/k8s-haproxy"
 
@@ -36,7 +35,7 @@ function build::build() {
 
 function build::docker() {
 	if $(command -v docker >/dev/null 2>&1); then
-		docker build --no-cache -t $docker_tag .
+		docker build -t $docker_tag .
 	else
 		echo "Docker is not installed, skipping docker build."
 	fi
