@@ -6,5 +6,5 @@ This still uses the old networking model
 ### Run it!
 
 ```
-docker run --net=”host” --env KUBE_APISERVER_ADDR=pilot10.qa.porch.com --env KUBE_APISERVER_PORT=7080 -d quay.io/porch/k8s-haproxy
+docker run --net="host" --env KUBE_APISERVER_ADDR=pilot10.qa.porch.com --env KUBE_APISERVER_PORT=7080 -d quay.io/porch/k8s-haproxy
 ```
