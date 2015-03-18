@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -176,5 +175,3 @@ func ManageWatch(c *client.Client) {
 		endpointsConfig.Channel("api"),
 	)
 }
-
-//util
