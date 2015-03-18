@@ -85,7 +85,10 @@ func (e *endpointUpdateHandler) OnUpdate(newEndpoints []api.Endpoints) {
 	lock.Lock()
 	endpoints = newEndpoints
 	lock.Unlock()
-	Commit()
+	err := Commit()
+	if err != nil {
+		glog.Errorf("error commiting haproxy config: %v", err)
+	}
 }
 
 type serviceUpdateHandler struct{}
