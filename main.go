@@ -25,27 +25,29 @@ var (
 	serviceConfig   = config.NewServiceConfig()
 	endpointsConfig = config.NewEndpointsConfig()
 	sourceAPI       *config.SourceAPI
+
+	endpointsUpdater *endpointUpdateHandler
+	serviceUpdater   = &serviceUpdateHandler{}
+
+	t    *template.Template
+	lock sync.Mutex
+
+	endpoints = []api.Endpoints{}
+	services  = []api.Service{}
 )
+
+const ConfigPath = "/etc/haproxy/haproxy.cfg"
 
 func init() {
 	client.BindClientConfigFlags(flag.CommandLine, clientConfig)
 	flag.Set("logtostderr", "true")
+	flag.Parse()
+	t = template.Must(template.ParseFiles(*templatePath))
 }
 
 func main() {
-	flag.Parse()
-
-	kubeClient, err := client.New(clientConfig)
-	if err != nil {
-		glog.Fatalf("Invalid API configuration: %v", err)
-	}
-
-	t = template.Must(template.ParseFiles(*templatePath))
-	glog.Info("managing config")
-
-	glog.Info("starting haproxy")
 	cmd := exec.Command("haproxy", "-f", ConfigPath, "-p", "/var/run/haproxy.pid")
-	err = cmd.Run()
+	err := cmd.Run()
 	if err != nil {
 		if o, err := cmd.CombinedOutput(); err != nil {
 			glog.Error(string(o))
@@ -54,7 +56,10 @@ func main() {
 	}
 	glog.Info("started haproxy")
 
-	glog.Info("starting watch")
+	kubeClient, err := client.New(clientConfig)
+	if err != nil {
+		glog.Fatalf("Invalid API configuration: %v", err)
+	}
 	serviceConfig.RegisterHandler(serviceUpdater)
 	endpointsConfig.RegisterHandler(endpointsUpdater)
 
@@ -69,20 +74,6 @@ func main() {
 
 	select {}
 }
-
-//haproxy stuff
-var (
-	endpointsUpdater *endpointUpdateHandler
-	serviceUpdater   = &serviceUpdateHandler{}
-
-	t    *template.Template
-	lock sync.Mutex
-
-	endpoints = []api.Endpoints{}
-	services  = []api.Service{}
-)
-
-const ConfigPath = "/etc/haproxy/haproxy.cfg"
 
 type endpointUpdateHandler struct{}
 
