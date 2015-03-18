@@ -19,8 +19,12 @@ import (
 )
 
 var (
-	clientConfig = &client.Config{}
 	templatePath = flag.String("template_path", "/etc/k8s-haproxy/haproxy.cfg.gotemplate", "location of the haproxy template")
+
+	clientConfig    = &client.Config{}
+	serviceConfig   = config.NewServiceConfig()
+	endpointsConfig = config.NewEndpointsConfig()
+	sourceAPI       *config.SourceAPI
 )
 
 func init() {
@@ -186,10 +190,3 @@ func makeKey(o runtime.Object) (string, error) {
 	}
 	return fmt.Sprintf("%v-%v", namespace, name), nil
 }
-
-//watch stuff
-var (
-	serviceConfig   = config.NewServiceConfig()
-	endpointsConfig = config.NewEndpointsConfig()
-	sourceAPI       *config.SourceAPI
-)
