@@ -36,14 +36,32 @@ func main() {
 		glog.Fatalf("Invalid API configuration: %v", err)
 	}
 
-	ManageConfig(*templatePath)
+	t = template.Must(template.ParseFiles(*templatePath))
 	glog.Info("managing config")
 
-	ManageHaproxy()
-	glog.Info("managing haproxy")
+	glog.Info("starting haproxy")
+	cmd := exec.Command("haproxy", "-f", ConfigPath, "-p", "/var/run/haproxy.pid")
+	err = cmd.Run()
+	if err != nil {
+		if o, err := cmd.CombinedOutput(); err != nil {
+			glog.Error(string(o))
+		}
+		glog.Errorf("haproxy process died, : %v", err)
+	}
+	glog.Info("started haproxy")
 
-	ManageWatch(kubeClient)
-	glog.Info("managing watch")
+	glog.Info("starting watch")
+	serviceConfig.RegisterHandler(serviceUpdater)
+	endpointsConfig.RegisterHandler(endpointsUpdater)
+
+	sourceAPI = config.NewSourceAPI(
+		kubeClient.Services(api.NamespaceAll),
+		kubeClient.Endpoints(api.NamespaceAll),
+		30*time.Second,
+		serviceConfig.Channel("api"),
+		endpointsConfig.Channel("api"),
+	)
+	glog.Info("started watch")
 
 	select {}
 }
@@ -61,25 +79,6 @@ var (
 )
 
 const ConfigPath = "/etc/haproxy/haproxy.cfg"
-
-func ManageHaproxy() {
-	cmd := exec.Command("haproxy", "-f", ConfigPath, "-p", "/var/run/haproxy.pid")
-	err := cmd.Run()
-	if err != nil {
-		if o, err := cmd.CombinedOutput(); err != nil {
-			glog.Error(string(o))
-		}
-		glog.Errorf("haproxy process died, : %v", err)
-	}
-}
-
-func ManageConfig(templatePath string) {
-	var err error
-	t, err = template.ParseFiles(templatePath)
-	if err != nil {
-		glog.Fatalf("error parsing template: %v", err)
-	}
-}
 
 type endpointUpdateHandler struct{}
 
@@ -194,17 +193,3 @@ var (
 	endpointsConfig = config.NewEndpointsConfig()
 	sourceAPI       *config.SourceAPI
 )
-
-func ManageWatch(c *client.Client) {
-
-	serviceConfig.RegisterHandler(serviceUpdater)
-	endpointsConfig.RegisterHandler(endpointsUpdater)
-
-	sourceAPI = config.NewSourceAPI(
-		c.Services(api.NamespaceAll),
-		c.Endpoints(api.NamespaceAll),
-		30*time.Second,
-		serviceConfig.Channel("api"),
-		endpointsConfig.Channel("api"),
-	)
-}
