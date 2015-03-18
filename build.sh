@@ -2,7 +2,7 @@
 
 set -e -x
 
-pkgs="./pkg ./cmd"
+pkgs="."
 docker_tag="quay.io/porch/k8s-haproxy"
 
 function build::clean() {
@@ -30,7 +30,7 @@ function build::format() {
 }
 
 function build::build() {
-	go build -o ./bin/k8s-haproxy ./cmd
+	go build -o ./bin/k8s-haproxy ./
 }
 
 function build::docker() {

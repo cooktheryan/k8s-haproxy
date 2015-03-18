@@ -27,14 +27,13 @@ listen stats :8080
 	stats enable
 	stats uri /
 
-{{ range $i, $service := . }}
-# {{ $service.Name }}
-backend {{ $service.Name }}-backend
-	balance roundrobin
-{{ range $index, $ip := $service.Backends }}	server {{ $service.Name }}-{{ $index }} {{ $ip }}:{{ $service.Port }} check
-{{ end}}
+{{ range $name, $state := . }}
+frontend {{ $name }}-frontend
+	bind *:{{ $state.Service.Spec.Port }}
+	default_backend {{ $name }}-backend
 
-frontend {{ $service.Name}}-frontend
-	bind *:{{ $service.Port}}
-	default_backend {{ $service.Name }}-backend
-{{ end}}
+backend {{ $name }}-backend
+	balance roundrobin
+{{ range $index, $endpoint := $state.Endpoints.Endpoints }}	server {{ $name }}-{{ $index }} {{ $endpoint.IP }}:{{ $endpoint.Port }} check
+{{ end }}
+{{ end }}
