@@ -29,11 +29,16 @@ listen stats :8080
 
 {{ range $name, $state := . }}
 frontend {{ $name }}-frontend
+	mode tcp
 	bind *:{{ $state.Service.Spec.Port }}
 	default_backend {{ $name }}-backend
 
 backend {{ $name }}-backend
+	mode tcp
 	balance roundrobin
 {{ range $index, $endpoint := $state.Endpoints.Endpoints }}	server {{ $name }}-{{ $index }} {{ $endpoint.IP }}:{{ $endpoint.Port }} check
 {{ end }}
 {{ end }}
+
+
+

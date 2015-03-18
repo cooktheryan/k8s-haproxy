@@ -110,9 +110,6 @@ func Commit() error {
 	if err != nil {
 		return err
 	}
-	if err != nil {
-		return err
-	}
 	err = t.Execute(f, states)
 	if err != nil {
 		return err
