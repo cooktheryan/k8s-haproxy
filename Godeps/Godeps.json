@@ -10,10 +10,6 @@
 			"Rev": "c04ceec27f72350b0964e04096ae14c18bee865f"
 		},
 		{
-			"ImportPath": "github.com/openshift/origin",
-			"Rev": "0ac00c6a7334d57016016ba4f96259e97ce62e4e"
-		},
-		{
 			"ImportPath": "github.com/coreos/go-etcd/etcd",
 			"Comment": "v0.2.0-rc1-120-g23142f6",
 			"Rev": "23142f6773a676cc2cae8dd0cb90b2ea761c853f"
