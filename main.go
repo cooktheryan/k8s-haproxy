@@ -9,8 +9,10 @@ import (
 	"time"
 
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/api/meta"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/client"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/proxy/config"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/runtime"
 
 	"github.com/golang/glog"
 	flag "github.com/spf13/pflag"
@@ -110,8 +112,10 @@ func Commit() error {
 	if err != nil {
 		return err
 	}
-	states := Convert(endpoints, services)
-	err = validate(states)
+	states, err := Convert(endpoints, services)
+	if err != nil {
+		return err
+	}
 	if err != nil {
 		return err
 	}
@@ -137,14 +141,22 @@ func validate(s map[string]ServiceState) error {
 	return nil
 }
 
-func Convert(es []api.Endpoints, ss []api.Service) map[string]ServiceState {
+func Convert(es []api.Endpoints, ss []api.Service) (map[string]ServiceState, error) {
 	sm := make(map[string]api.Service)
 	em := make(map[string]api.Endpoints)
 	for _, s := range ss {
-		sm[s.Name] = s
+		k, err := makeKey(&s)
+		if err != nil {
+			return nil, err
+		}
+		sm[k] = s
 	}
 	for _, e := range es {
-		em[e.Name] = e
+		k, err := makeKey(&e)
+		if err != nil {
+			return nil, err
+		}
+		em[k] = e
 	}
 	states := make(map[string]ServiceState)
 	for k, s := range sm {
@@ -155,7 +167,25 @@ func Convert(es []api.Endpoints, ss []api.Service) map[string]ServiceState {
 		glog.Infof("endpoint not found for service: %+v", s)
 		// what should we do here?
 	}
-	return states
+	err := validate(states)
+	if err != nil {
+		return nil, err
+	}
+	return states, nil
+}
+
+var access = meta.NewAccessor()
+
+func makeKey(o runtime.Object) (string, error) {
+	namespace, err := access.Namespace(o)
+	if err != nil {
+		return "", err
+	}
+	name, err := access.Name(o)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%v-%v", namespace, name), nil
 }
 
 //watch stuff
