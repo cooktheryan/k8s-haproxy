@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"sync"
 	"text/template"
 	"time"
 
@@ -13,6 +12,7 @@ import (
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/client"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/proxy/config"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/runtime"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/util"
 
 	"github.com/golang/glog"
 	flag "github.com/spf13/pflag"
@@ -26,10 +26,6 @@ const (
 var (
 	clientConfig = &client.Config{}
 	t            = template.Must(template.ParseFiles(templatePath))
-
-	lock      sync.Mutex
-	endpoints = []api.Endpoints{}
-	services  = []api.Service{}
 )
 
 func init() {
@@ -45,7 +41,7 @@ func main() {
 		if o, err := cmd.CombinedOutput(); err != nil {
 			glog.Error(string(o))
 		}
-		glog.Errorf("haproxy process died, : %v", err)
+		glog.Fatalf("haproxy process died, : %v", err)
 	}
 	glog.Info("started haproxy")
 
@@ -54,12 +50,16 @@ func main() {
 		glog.Fatalf("Invalid API configuration: %v", err)
 	}
 
+	cu := configUpdater{
+		make([]api.Endpoints, 0),
+		make([]api.Service, 0),
+		make(chan interface{}, 2),
+	}
+
 	serviceConfig := config.NewServiceConfig()
 	endpointsConfig := config.NewEndpointsConfig()
-	endpointsUpdater := &endpointUpdateHandler{}
-	serviceUpdater := &serviceUpdateHandler{}
-	serviceConfig.RegisterHandler(serviceUpdater)
-	endpointsConfig.RegisterHandler(endpointsUpdater)
+	serviceConfig.RegisterHandler(serviceUpdateHandler(cu.updates))
+	endpointsConfig.RegisterHandler(endpointUpdateHandler(cu.updates))
 
 	config.NewSourceAPI(
 		kubeClient.Services(api.NamespaceAll),
@@ -70,41 +70,43 @@ func main() {
 	)
 	glog.Info("started watch")
 
-	select {}
+	util.Forever(cu.syncLoop, 1*time.Second)
 }
 
-type endpointUpdateHandler struct{}
+type configUpdater struct {
+	endpoints []api.Endpoints
+	services  []api.Service
+	updates   chan interface{}
+}
 
-func (e *endpointUpdateHandler) OnUpdate(newEndpoints []api.Endpoints) {
-	lock.Lock()
-	endpoints = newEndpoints
-	lock.Unlock()
-	err := Commit()
-	if err != nil {
-		glog.Errorf("error commiting haproxy config: %v", err)
+func (c *configUpdater) syncLoop() {
+Sync:
+	for {
+		l := <-c.updates
+		switch l.(type) {
+		default:
+			glog.Errorf("update noat a []api.Service, or a []api.Endpoints: %+v", l)
+			continue Sync
+		case []api.Service:
+			c.services = l.([]api.Service)
+		case []api.Endpoints:
+			c.endpoints = l.([]api.Endpoints)
+		}
+
+		if err := c.commit(); err != nil {
+			glog.Errorf("error commiting haproxy config: %v", err)
+			continue
+		}
+		glog.Info("updated haproxy")
 	}
 }
 
-type serviceUpdateHandler struct{}
-
-func (e *serviceUpdateHandler) OnUpdate(newServices []api.Service) {
-	lock.Lock()
-	services = newServices
-	lock.Unlock()
-	err := Commit()
-	if err != nil {
-		glog.Errorf("error commiting haproxy config: %v", err)
-	}
-}
-
-func Commit() error {
-	lock.Lock()
-	defer lock.Unlock()
+func (c *configUpdater) commit() error {
 	f, err := os.Create(configPath)
 	if err != nil {
 		return err
 	}
-	states, err := Convert(endpoints, services)
+	states, err := Convert(c.endpoints, c.services)
 	if err != nil {
 		return err
 	}
@@ -117,8 +119,19 @@ func Commit() error {
 	if err != nil {
 		return fmt.Errorf("error reloading haproxy: %v: %v", err, string(b))
 	}
-	glog.Info("updated haproxy")
 	return nil
+}
+
+type endpointUpdateHandler chan interface{}
+
+func (h endpointUpdateHandler) OnUpdate(newEndpoints []api.Endpoints) {
+	h <- newEndpoints
+}
+
+type serviceUpdateHandler chan interface{}
+
+func (h serviceUpdateHandler) OnUpdate(newServices []api.Service) {
+	h <- newServices
 }
 
 type ServiceState struct {
