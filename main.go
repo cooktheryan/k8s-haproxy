@@ -50,14 +50,15 @@ func main() {
 	cu := configUpdater{
 		make([]api.Endpoints, 0),
 		make([]api.Service, 0),
-		make(chan interface{}, 2),
+		make(chan []api.Endpoints),
+		make(chan []api.Service),
 		template.Must(template.ParseFiles(templatePath)),
 	}
 
-	serviceConfig := config.NewServiceConfig()
 	endpointsConfig := config.NewEndpointsConfig()
-	serviceConfig.RegisterHandler(serviceUpdateHandler(cu.updates))
-	endpointsConfig.RegisterHandler(endpointUpdateHandler(cu.updates))
+	serviceConfig := config.NewServiceConfig()
+	endpointsConfig.RegisterHandler(cu.eu)
+	serviceConfig.RegisterHandler(cu.su)
 
 	config.NewSourceAPI(
 		kubeClient.Services(api.NamespaceAll),
@@ -74,22 +75,20 @@ func main() {
 type configUpdater struct {
 	endpoints []api.Endpoints
 	services  []api.Service
-	updates   chan interface{}
+	eu        endpointUpdateHandler
+	su        serviceUpdateHandler
 	t         *template.Template
 }
 
 func (c *configUpdater) syncLoop() {
-Sync:
 	for {
-		l := <-c.updates
-		switch l.(type) {
-		default:
-			glog.Errorf("update noat a []api.Service, or a []api.Endpoints: %+v", l)
-			continue Sync
-		case []api.Service:
-			c.services = l.([]api.Service)
-		case []api.Endpoints:
-			c.endpoints = l.([]api.Endpoints)
+		select {
+		case sl := <-c.su:
+			c.services = sl
+			break
+		case el := <-c.eu:
+			c.endpoints = el
+			break
 		}
 
 		if err := c.commit(); err != nil {
@@ -121,13 +120,13 @@ func (c *configUpdater) commit() error {
 	return nil
 }
 
-type endpointUpdateHandler chan interface{}
+type endpointUpdateHandler chan []api.Endpoints
 
 func (h endpointUpdateHandler) OnUpdate(newEndpoints []api.Endpoints) {
 	h <- newEndpoints
 }
 
-type serviceUpdateHandler chan interface{}
+type serviceUpdateHandler chan []api.Service
 
 func (h serviceUpdateHandler) OnUpdate(newServices []api.Service) {
 	h <- newServices
