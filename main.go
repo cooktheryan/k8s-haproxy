@@ -18,35 +18,28 @@ import (
 	flag "github.com/spf13/pflag"
 )
 
+const (
+	configPath   = "/etc/haproxy/haproxy.cfg"
+	templatePath = "/etc/k8s-haproxy/haproxy.cfg.gotemplate"
+)
+
 var (
-	templatePath = flag.String("template_path", "/etc/k8s-haproxy/haproxy.cfg.gotemplate", "location of the haproxy template")
+	clientConfig = &client.Config{}
+	t            = template.Must(template.ParseFiles(templatePath))
 
-	clientConfig    = &client.Config{}
-	serviceConfig   = config.NewServiceConfig()
-	endpointsConfig = config.NewEndpointsConfig()
-	sourceAPI       *config.SourceAPI
-
-	endpointsUpdater *endpointUpdateHandler
-	serviceUpdater   = &serviceUpdateHandler{}
-
-	t    *template.Template
-	lock sync.Mutex
-
+	lock      sync.Mutex
 	endpoints = []api.Endpoints{}
 	services  = []api.Service{}
 )
-
-const ConfigPath = "/etc/haproxy/haproxy.cfg"
 
 func init() {
 	client.BindClientConfigFlags(flag.CommandLine, clientConfig)
 	flag.Set("logtostderr", "true")
 	flag.Parse()
-	t = template.Must(template.ParseFiles(*templatePath))
 }
 
 func main() {
-	cmd := exec.Command("haproxy", "-f", ConfigPath, "-p", "/var/run/haproxy.pid")
+	cmd := exec.Command("haproxy", "-f", configPath, "-p", "/var/run/haproxy.pid")
 	err := cmd.Run()
 	if err != nil {
 		if o, err := cmd.CombinedOutput(); err != nil {
@@ -60,10 +53,15 @@ func main() {
 	if err != nil {
 		glog.Fatalf("Invalid API configuration: %v", err)
 	}
+
+	serviceConfig := config.NewServiceConfig()
+	endpointsConfig := config.NewEndpointsConfig()
+	endpointsUpdater := &endpointUpdateHandler{}
+	serviceUpdater := &serviceUpdateHandler{}
 	serviceConfig.RegisterHandler(serviceUpdater)
 	endpointsConfig.RegisterHandler(endpointsUpdater)
 
-	sourceAPI = config.NewSourceAPI(
+	config.NewSourceAPI(
 		kubeClient.Services(api.NamespaceAll),
 		kubeClient.Endpoints(api.NamespaceAll),
 		30*time.Second,
@@ -102,7 +100,7 @@ func (e *serviceUpdateHandler) OnUpdate(newServices []api.Service) {
 func Commit() error {
 	lock.Lock()
 	defer lock.Unlock()
-	f, err := os.Create(ConfigPath)
+	f, err := os.Create(configPath)
 	if err != nil {
 		return err
 	}
@@ -114,7 +112,7 @@ func Commit() error {
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command("/reload-haproxy.sh", ConfigPath)
+	cmd := exec.Command("/reload-haproxy.sh", configPath)
 	b, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("error reloading haproxy: %v: %v", err, string(b))
