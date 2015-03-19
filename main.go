@@ -153,7 +153,7 @@ func Convert(es []api.Endpoints, ss []api.Service) (map[string]ServiceState, err
 			states[k] = ServiceState{s, e}
 			continue
 		}
-		glog.Infof("endpoint not found for service: %+v", s)
+		glog.Infof("endpoint not found for service: %v", k)
 		// what should we do here?
 	}
 	err := validate(states)
