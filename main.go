@@ -23,10 +23,7 @@ const (
 	templatePath = "/etc/k8s-haproxy/haproxy.cfg.gotemplate"
 )
 
-var (
-	clientConfig = &client.Config{}
-	t            = template.Must(template.ParseFiles(templatePath))
-)
+var clientConfig = &client.Config{}
 
 func init() {
 	client.BindClientConfigFlags(flag.CommandLine, clientConfig)
@@ -54,6 +51,7 @@ func main() {
 		make([]api.Endpoints, 0),
 		make([]api.Service, 0),
 		make(chan interface{}, 2),
+		template.Must(template.ParseFiles(templatePath)),
 	}
 
 	serviceConfig := config.NewServiceConfig()
@@ -77,6 +75,7 @@ type configUpdater struct {
 	endpoints []api.Endpoints
 	services  []api.Service
 	updates   chan interface{}
+	t         *template.Template
 }
 
 func (c *configUpdater) syncLoop() {
@@ -110,7 +109,7 @@ func (c *configUpdater) commit() error {
 	if err != nil {
 		return err
 	}
-	err = t.Execute(f, states)
+	err = c.t.Execute(f, states)
 	if err != nil {
 		return err
 	}
