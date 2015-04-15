@@ -3,7 +3,7 @@
 set -e -x
 
 pkgs="."
-docker_tag="quay.io/porch/k8s-haproxy"
+docker_tag="quay.io/porch/k8s-haproxy:0.15.0"
 
 function build::clean() {
 	rm ./bin/k8s-haproxy

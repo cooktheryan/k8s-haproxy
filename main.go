@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"text/template"
 	"time"
 
@@ -53,6 +54,7 @@ func main() {
 		make(chan []api.Endpoints),
 		make(chan []api.Service),
 		template.Must(template.ParseFiles(templatePath)),
+		make(map[ServicePortName]*ServiceInfo),
 	}
 
 	endpointsConfig := config.NewEndpointsConfig()
@@ -69,15 +71,20 @@ func main() {
 	)
 	glog.Info("started watch")
 
+	iptablesFlush(ipt)
+	iptablesInit(ipt)
+	glog.Info("started iptables")
+
 	util.Forever(cu.syncLoop, 1*time.Second)
 }
 
 type configUpdater struct {
-	endpoints []api.Endpoints
-	services  []api.Service
-	eu        endpointUpdateHandler
-	su        serviceUpdateHandler
-	t         *template.Template
+	endpoints  []api.Endpoints
+	services   []api.Service
+	eu         endpointUpdateHandler
+	su         serviceUpdateHandler
+	t          *template.Template
+	serviceMap map[ServicePortName]*ServiceInfo
 }
 
 func (c *configUpdater) syncLoop() {
@@ -85,6 +92,11 @@ func (c *configUpdater) syncLoop() {
 		select {
 		case sl := <-c.su:
 			c.services = sl
+			updated, deleted := updateServiceInfo(c.serviceMap, sl)
+			c.serviceMap = updated
+			for name, info := range deleted {
+				closePortal(name, info)
+			}
 			break
 		case el := <-c.eu:
 			c.endpoints = el
@@ -104,7 +116,7 @@ func (c *configUpdater) commit() error {
 	if err != nil {
 		return err
 	}
-	states, err := Convert(c.endpoints, c.services)
+	states, err := Convert(c.endpoints, c.services, c.serviceMap)
 	if err != nil {
 		return err
 	}
@@ -112,6 +124,7 @@ func (c *configUpdater) commit() error {
 	if err != nil {
 		return err
 	}
+	ensurePortals(c.serviceMap)
 	cmd := exec.Command("/reload-haproxy.sh", configPath)
 	b, err := cmd.CombinedOutput()
 	if err != nil {
@@ -133,7 +146,7 @@ func (h serviceUpdateHandler) OnUpdate(newServices []api.Service) {
 }
 
 type ServiceState struct {
-	Service   api.Service
+	ProxyPort uint
 	Endpoints api.Endpoints
 }
 
@@ -141,7 +154,7 @@ func validate(s map[string]ServiceState) error {
 	return nil
 }
 
-func Convert(es []api.Endpoints, ss []api.Service) (map[string]ServiceState, error) {
+func Convert(es []api.Endpoints, ss []api.Service, si map[ServicePortName]*ServiceInfo) (map[string]ServiceState, error) {
 	sm := make(map[string]api.Service)
 	em := make(map[string]api.Endpoints)
 	for _, s := range ss {
@@ -159,19 +172,29 @@ func Convert(es []api.Endpoints, ss []api.Service) (map[string]ServiceState, err
 		em[k] = e
 	}
 	states := make(map[string]ServiceState)
-	for k, s := range sm {
-		if e, found := em[k]; found {
-			states[k] = ServiceState{s, e}
-			continue
-		}
-		glog.Infof("endpoint not found for service: %v", k)
-		// what should we do here?
-	}
+
+	//TODO
+
 	err := validate(states)
 	if err != nil {
 		return nil, err
 	}
 	return states, nil
+}
+
+func updateServiceInfo(
+	serviceMap map[ServicePortName]*ServiceInfo,
+	sl []api.Service,
+) (
+	updated map[ServicePortName]*ServiceInfo,
+	deleted map[ServicePortName]*ServiceInfo,
+) {
+	updated = make(map[ServicePortName]*ServiceInfo)
+	deleted = make(map[ServicePortName]*ServiceInfo)
+	for _, service := range sl {
+		makeServicePortName(service)
+	}
+	return updated, deleted
 }
 
 var access = meta.NewAccessor()
@@ -186,4 +209,12 @@ func makeKey(o runtime.Object) (string, error) {
 		return "", err
 	}
 	return fmt.Sprintf("%v-%v", namespace, name), nil
+}
+
+func makeServicePortName(service api.Service) []ServicePortName {
+	toReturn := make([]ServicePortName, 0)
+	for _, port := range service.Spec.Ports {
+		toReturn = append(toReturn, ServicePortName{Port: strconv.Itoa(port.Port)})
+	}
+	return toReturn
 }
