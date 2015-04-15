@@ -21,6 +21,7 @@ import (
 
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/types"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/util"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/util/errors"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/util/exec"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/util/iptables"
@@ -29,9 +30,8 @@ import (
 
 var (
 	listenIP = zeroIPv4
-	hostIP   = zeroIPv4
-
-	ipt = iptables.New(exec.New(), iptables.ProtocolIpv4)
+	hostIP   = mustChooseHostInterface(util.ChooseHostInterface())
+	ipt      = iptables.New(exec.New(), iptables.ProtocolIpv4)
 )
 
 // ServicePortName carries a namespace + name + portname.  This is the unique
@@ -56,6 +56,13 @@ type ServiceInfo struct {
 
 func (spn ServicePortName) String() string {
 	return fmt.Sprintf("%s:%s", spn.NamespacedName.String(), spn.Port)
+}
+
+func mustChooseHostInterface(ip net.IP, err error) net.IP {
+	if err != nil {
+		panic(err)
+	}
+	return ip
 }
 
 func ensurePortals(serviceMap map[ServicePortName]*ServiceInfo) {

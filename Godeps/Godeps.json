@@ -7,7 +7,7 @@
 	"Deps": [
 		{
 			"ImportPath": "github.com/GoogleCloudPlatform/kubernetes/pkg",
-			"Rev": "c04ceec27f72350b0964e04096ae14c18bee865f"
+			"Rev": "831f3e60d7cd64c61a775d6c78acce1673dd8aa9"
 		}
 	]
 }

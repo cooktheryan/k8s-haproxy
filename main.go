@@ -8,10 +8,9 @@ import (
 	"time"
 
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/api/meta"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/client"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/proxy/config"
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/runtime"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/types"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/util"
 
 	"github.com/golang/glog"
@@ -133,35 +132,37 @@ func (h serviceUpdateHandler) OnUpdate(newServices []api.Service) {
 }
 
 type ServiceState struct {
-	Service   api.Service
-	Endpoints api.Endpoints
+	EphemeralPorts map[ServicePortName]int
+	Service        api.Service
+	Endpoints      api.Endpoints
 }
 
-func validate(s map[string]ServiceState) error {
+type ServiceMapping struct {
+	EphemeralPort int
+	Address       []api.EndpointAddress
+}
+
+func validate(s map[types.NamespacedName]ServiceState) error {
 	return nil
 }
 
-func Convert(es []api.Endpoints, ss []api.Service) (map[string]ServiceState, error) {
-	sm := make(map[string]api.Service)
-	em := make(map[string]api.Endpoints)
+func Convert(es []api.Endpoints, ss []api.Service) (map[types.NamespacedName]ServiceState, error) {
+	sm := make(map[types.NamespacedName]api.Service)
+	em := make(map[types.NamespacedName]api.Endpoints)
 	for _, s := range ss {
-		k, err := makeKey(&s)
-		if err != nil {
-			return nil, err
-		}
-		sm[k] = s
+		sm[types.NamespacedName{Namespace: s.Namespace, Name: s.Name}] = s
 	}
 	for _, e := range es {
-		k, err := makeKey(&e)
-		if err != nil {
-			return nil, err
-		}
-		em[k] = e
+		em[types.NamespacedName{Namespace: e.Namespace, Name: e.Name}] = e
 	}
-	states := make(map[string]ServiceState)
+	states := make(map[types.NamespacedName]ServiceState)
 	for k, s := range sm {
 		if e, found := em[k]; found {
-			states[k] = ServiceState{s, e}
+			states[k] = ServiceState{
+				EphemeralPorts: map[ServicePortName]int{},
+				Service:        s,
+				Endpoints:      e,
+			}
 			continue
 		}
 		glog.Infof("endpoint not found for service: %v", k)
@@ -172,18 +173,4 @@ func Convert(es []api.Endpoints, ss []api.Service) (map[string]ServiceState, err
 		return nil, err
 	}
 	return states, nil
-}
-
-var access = meta.NewAccessor()
-
-func makeKey(o runtime.Object) (string, error) {
-	namespace, err := access.Namespace(o)
-	if err != nil {
-		return "", err
-	}
-	name, err := access.Name(o)
-	if err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("%v-%v", namespace, name), nil
 }
