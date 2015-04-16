@@ -1,9 +1,10 @@
-package main
+package pkg
 
 import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"text/template"
 	"time"
 
@@ -12,56 +13,40 @@ import (
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/proxy/config"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/types"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/util"
-
 	"github.com/golang/glog"
-	flag "github.com/spf13/pflag"
 )
 
-const (
-	configPath   = "/etc/haproxy/haproxy.cfg"
-	templatePath = "/etc/k8s-haproxy/haproxy.cfg.gotemplate"
-)
-
-var clientConfig = &client.Config{}
-
-func init() {
-	client.BindClientConfigFlags(flag.CommandLine, clientConfig)
-	flag.Set("logtostderr", "true")
-	flag.Parse()
+type ConfigUpdater struct {
+	configPath string
+	endpoints  []api.Endpoints
+	services   []api.Service
+	eu         endpointUpdateHandler
+	su         serviceUpdateHandler
+	ports      *portManager
+	t          *template.Template
 }
 
-func main() {
-	cmd := exec.Command("haproxy", "-f", configPath, "-p", "/var/run/haproxy.pid")
-	err := cmd.Run()
-	if err != nil {
-		if o, err := cmd.CombinedOutput(); err != nil {
-			glog.Error(string(o))
-		}
-		glog.Fatalf("haproxy process died, : %v", err)
-	}
-	glog.Info("started haproxy")
-
-	kubeClient, err := client.New(clientConfig)
-	if err != nil {
-		glog.Fatalf("Invalid API configuration: %v", err)
-	}
-
-	cu := configUpdater{
+func NewConfigUpdater(configPath string, t *template.Template) *ConfigUpdater {
+	return &ConfigUpdater{
+		configPath,
 		make([]api.Endpoints, 0),
 		make([]api.Service, 0),
 		make(chan []api.Endpoints),
 		make(chan []api.Service),
-		template.Must(template.ParseFiles(templatePath)),
+		newPortManager(),
+		t,
 	}
+}
 
+func (cu *ConfigUpdater) Run(c *client.Client) {
 	endpointsConfig := config.NewEndpointsConfig()
 	serviceConfig := config.NewServiceConfig()
 	endpointsConfig.RegisterHandler(cu.eu)
 	serviceConfig.RegisterHandler(cu.su)
 
 	config.NewSourceAPI(
-		kubeClient.Services(api.NamespaceAll),
-		kubeClient.Endpoints(api.NamespaceAll),
+		c.Services(api.NamespaceAll),
+		c.Endpoints(api.NamespaceAll),
 		30*time.Second,
 		serviceConfig.Channel("api"),
 		endpointsConfig.Channel("api"),
@@ -71,15 +56,7 @@ func main() {
 	util.Forever(cu.syncLoop, 1*time.Second)
 }
 
-type configUpdater struct {
-	endpoints []api.Endpoints
-	services  []api.Service
-	eu        endpointUpdateHandler
-	su        serviceUpdateHandler
-	t         *template.Template
-}
-
-func (c *configUpdater) syncLoop() {
+func (c *ConfigUpdater) syncLoop() {
 	for {
 		select {
 		case sl := <-c.su:
@@ -98,12 +75,12 @@ func (c *configUpdater) syncLoop() {
 	}
 }
 
-func (c *configUpdater) commit() error {
-	f, err := os.Create(configPath)
+func (c *ConfigUpdater) commit() error {
+	f, err := os.Create(c.configPath)
 	if err != nil {
 		return err
 	}
-	states, err := Convert(c.endpoints, c.services)
+	states, err := c.Convert(c.endpoints, c.services)
 	if err != nil {
 		return err
 	}
@@ -111,7 +88,7 @@ func (c *configUpdater) commit() error {
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command("/reload-haproxy.sh", configPath)
+	cmd := exec.Command("/reload-haproxy.sh", c.configPath)
 	b, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("error reloading haproxy: %v: %v", err, string(b))
@@ -146,7 +123,7 @@ func validate(s map[types.NamespacedName]ServiceState) error {
 	return nil
 }
 
-func Convert(es []api.Endpoints, ss []api.Service) (map[types.NamespacedName]ServiceState, error) {
+func (c *ConfigUpdater) Convert(es []api.Endpoints, ss []api.Service) (map[types.NamespacedName]ServiceState, error) {
 	sm := make(map[types.NamespacedName]api.Service)
 	em := make(map[types.NamespacedName]api.Endpoints)
 	for _, s := range ss {
@@ -157,16 +134,22 @@ func Convert(es []api.Endpoints, ss []api.Service) (map[types.NamespacedName]Ser
 	}
 	states := make(map[types.NamespacedName]ServiceState)
 	for k, s := range sm {
-		if e, found := em[k]; found {
-			states[k] = ServiceState{
-				EphemeralPorts: map[ServicePortName]int{},
-				Service:        s,
-				Endpoints:      e,
-			}
+		e, found := em[k]
+		if !found {
+			// what should we do here?
+			glog.Infof("endpoint not found for service: %v", k)
 			continue
 		}
-		glog.Infof("endpoint not found for service: %v", k)
-		// what should we do here?
+		ephemeralPorts := make(map[ServicePortName]int)
+		for _, port := range s.Spec.Ports {
+			spn := ServicePortName{k, strconv.Itoa(port.Port)}
+			ephemeralPorts[spn] = c.ports.Get(spn)
+		}
+		states[k] = ServiceState{
+			EphemeralPorts: ephemeralPorts,
+			Service:        s,
+			Endpoints:      e,
+		}
 	}
 	err := validate(states)
 	if err != nil {
