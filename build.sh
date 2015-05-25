@@ -11,7 +11,8 @@ function build::clean() {
 
 function build::tools() {
 	go get github.com/tools/godep
-	go get github.com/golang/lint/golint
+	go get github.com/nsf/gocode
+        go get github.com/golang/lint/golint
 	go get golang.org/x/tools/cmd/vet
 	go get golang.org/x/tools/cmd/godoc
 	go get golang.org/x/tools/cmd/goimports
@@ -45,6 +46,8 @@ function build::success() {
 	echo "Done (checkout ./bin/)"
 	exit 0
 }
+
+export GOPATH=$HOME/go
 
 build::tools
 build::deps

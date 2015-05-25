@@ -25,13 +25,11 @@ const (
 
 var clientConfig = &client.Config{}
 
-func init() {
+func main() {
 	client.BindClientConfigFlags(flag.CommandLine, clientConfig)
 	flag.Set("logtostderr", "true")
 	flag.Parse()
-}
 
-func main() {
 	cmd := exec.Command("haproxy", "-f", configPath, "-p", "/var/run/haproxy.pid")
 	err := cmd.Run()
 	if err != nil {
@@ -90,7 +88,6 @@ func (c *configUpdater) syncLoop() {
 			c.endpoints = el
 			break
 		}
-
 		if err := c.commit(); err != nil {
 			glog.Errorf("error commiting haproxy config: %v", err)
 			continue
